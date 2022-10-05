@@ -18,7 +18,9 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type TemplateClient interface {
-	//one message is sent and one is recieved
+	// one message is sent and one is recieved
+	GetTime(ctx context.Context, in *ClientTime, opts ...grpc.CallOption) (*ServerTime, error)
+	// one message is sent and one is recieved
 	Increment(ctx context.Context, in *Amount, opts ...grpc.CallOption) (*Ack, error)
 	// many messages are sent and one is recieved
 	SayHi(ctx context.Context, opts ...grpc.CallOption) (Template_SayHiClient, error)
@@ -30,6 +32,15 @@ type templateClient struct {
 
 func NewTemplateClient(cc grpc.ClientConnInterface) TemplateClient {
 	return &templateClient{cc}
+}
+
+func (c *templateClient) GetTime(ctx context.Context, in *ClientTime, opts ...grpc.CallOption) (*ServerTime, error) {
+	out := new(ServerTime)
+	err := c.cc.Invoke(ctx, "/proto.Template/getTime", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *templateClient) Increment(ctx context.Context, in *Amount, opts ...grpc.CallOption) (*Ack, error) {
@@ -79,7 +90,9 @@ func (x *templateSayHiClient) CloseAndRecv() (*Farewell, error) {
 // All implementations must embed UnimplementedTemplateServer
 // for forward compatibility
 type TemplateServer interface {
-	//one message is sent and one is recieved
+	// one message is sent and one is recieved
+	GetTime(context.Context, *ClientTime) (*ServerTime, error)
+	// one message is sent and one is recieved
 	Increment(context.Context, *Amount) (*Ack, error)
 	// many messages are sent and one is recieved
 	SayHi(Template_SayHiServer) error
@@ -90,6 +103,9 @@ type TemplateServer interface {
 type UnimplementedTemplateServer struct {
 }
 
+func (UnimplementedTemplateServer) GetTime(context.Context, *ClientTime) (*ServerTime, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTime not implemented")
+}
 func (UnimplementedTemplateServer) Increment(context.Context, *Amount) (*Ack, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Increment not implemented")
 }
@@ -107,6 +123,24 @@ type UnsafeTemplateServer interface {
 
 func RegisterTemplateServer(s grpc.ServiceRegistrar, srv TemplateServer) {
 	s.RegisterService(&Template_ServiceDesc, srv)
+}
+
+func _Template_GetTime_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClientTime)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TemplateServer).GetTime(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.Template/getTime",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TemplateServer).GetTime(ctx, req.(*ClientTime))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Template_Increment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -161,6 +195,10 @@ var Template_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*TemplateServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
+			MethodName: "getTime",
+			Handler:    _Template_GetTime_Handler,
+		},
+		{
 			MethodName: "Increment",
 			Handler:    _Template_Increment_Handler,
 		},
@@ -172,5 +210,5 @@ var Template_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "proto/template.proto",
+	Metadata: "template.proto",
 }

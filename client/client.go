@@ -97,6 +97,9 @@ func parseInput() {
 			if input == "hi" {
 				sayHi()
 			}
+			if input == "getTime" {
+				getTime()
+			}
 			continue
 		}
 		incrementVal(val)
@@ -125,6 +128,21 @@ func incrementVal(val int64) {
 		// but hopefully this will never be reached
 		fmt.Println("Oh no something went wrong :(")
 	}
+}
+
+func getTime() {
+
+	ClientTime := &gRPC.ClientTime{
+		Message: "", //cast from int to int32
+	}
+	fmt.Println(time.Now())
+	serverTime, err := server.GetTime(context.Background(), ClientTime)
+	if err != nil {
+		log.Printf("Client %s: no response from the server, attempting to reconnect", *clientsName)
+		log.Println(err)
+	}
+
+	fmt.Println(serverTime.Message)
 }
 
 func sayHi() {

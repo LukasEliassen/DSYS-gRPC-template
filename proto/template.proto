@@ -12,6 +12,9 @@ package proto;
 // you can call it whatever you want
 service Template
 {
+    // one message is sent and one is recieved
+    rpc getTime (clientTime) returns (serverTime);
+
     //one message is sent and one is recieved
     rpc Increment (Amount) returns (Ack);
 
@@ -35,5 +38,13 @@ message Greeding {
 }
 
 message Farewell {
+    string message = 1;
+}
+
+message clientTime {
+    string message = 1;
+}
+
+message serverTime {
     string message = 1;
 }

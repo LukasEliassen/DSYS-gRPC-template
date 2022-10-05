@@ -20,10 +20,11 @@ import (
 
 type Server struct {
 	gRPC.UnimplementedTemplateServer        // You need this line if you have a server
-	name                                    string // Not required but useful if you want to name your server
-	port                                    string // Not required but useful if your server needs to know what port it's listening to
+	name                             string // Not required but useful if you want to name your server
+	port                             string // Not required but useful if your server needs to know what port it's listening to
 
-	incrementValue int64      // value that clients can increment.
+	incrementValue int64 // value that clients can increment.
+	serverTime     time.Time
 	mutex          sync.Mutex // used to lock the server to avoid race conditions.
 }
 
@@ -53,7 +54,7 @@ func launchServer() {
 	log.Printf("Server %s: Attempts to create listener on port %s\n", *serverName, *port)
 
 	// Create listener tcp on given port or default port 5400
-	list, err := net.Listen("tcp", fmt.Sprintf("localhost:%s", *port))
+	list, err := net.Listen("tcp", fmt.Sprintf("172.20.10.3:%s", *port))
 	if err != nil {
 		log.Printf("Server %s: Failed to listen on port %s: %v", *serverName, *port, err) //If it fails to listen on the port, run launchServer method again with the next value/port in ports array
 		return
@@ -69,6 +70,7 @@ func launchServer() {
 		name:           *serverName,
 		port:           *port,
 		incrementValue: 0, // gives default value, but not sure if it is necessary
+		serverTime:     time.Now(),
 	}
 
 	gRPC.RegisterTemplateServer(grpcServer, server) //Registers the server to the gRPC server.
@@ -92,6 +94,16 @@ func (s *Server) Increment(ctx context.Context, Amount *gRPC.Amount) (*gRPC.Ack,
 	// and returns the new value.
 	s.incrementValue += int64(Amount.GetValue())
 	return &gRPC.Ack{NewValue: s.incrementValue}, nil
+}
+
+func (s *Server) GetTime(ctx context.Context, ClientTime *gRPC.ClientTime) (*gRPC.ServerTime, error) {
+	// locks the server ensuring no one else can increment the value at the same time.
+	// and unlocks the server when the method is done.
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.serverTime = time.Now()
+	fmt.Println("s.serverTime: ", s.serverTime.String())
+	return &gRPC.ServerTime{Message: s.serverTime.String()}, nil
 }
 
 func (s *Server) SayHi(msgStream gRPC.Template_SayHiServer) error {
