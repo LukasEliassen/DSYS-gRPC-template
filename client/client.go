@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -57,6 +56,7 @@ func ConnectToServer() {
 
 	//dial the server to get a connection to it
 	log.Printf("client %s: Attempts to dial on port %s\n", *clientsName, *serverPort)
+	// Insert your device's IP before the colon in the print statement
 	conn, err := grpc.DialContext(timeContext, fmt.Sprintf(":%s", *serverPort), opts...)
 	if err != nil {
 		log.Printf("Fail to Dial : %v", err)
@@ -72,7 +72,6 @@ func ConnectToServer() {
 
 func parseInput() {
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Println("Type the amount you wish to increment with here. Type 0 to get the current value")
 	fmt.Println("--------------------")
 
 	//Infinite loop to listen for clients input.
@@ -91,47 +90,14 @@ func parseInput() {
 			continue
 		}
 
-		//Convert string to int64, return error if the int is larger than 32bit or not a number
-		val, err := strconv.ParseInt(input, 10, 64)
-		if err != nil {
-			if input == "hi" {
-				sayHi()
-			}
-			if input == "getTime" {
-				getTime()
-			}
-			continue
+		if input == "getTime" {
+			getTime()
 		}
-		incrementVal(val)
-	}
-}
-
-func incrementVal(val int64) {
-	//create amount type
-	amount := &gRPC.Amount{
-		ClientName: *clientsName,
-		Value:      val, //cast from int to int32
-	}
-
-	//Make gRPC call to server with amount, and recieve acknowlegdement back.
-	ack, err := server.Increment(context.Background(), amount)
-	if err != nil {
-		log.Printf("Client %s: no response from the server, attempting to reconnect", *clientsName)
-		log.Println(err)
-	}
-
-	// check if the server has handled the request correctly
-	if ack.NewValue >= val {
-		fmt.Printf("Success, the new value is now %d\n", ack.NewValue)
-	} else {
-		// something could be added here to handle the error
-		// but hopefully this will never be reached
-		fmt.Println("Oh no something went wrong :(")
+		continue
 	}
 }
 
 func getTime() {
-
 	ClientTime := &gRPC.ClientTime{
 		Message: "", //cast from int to int32
 	}
@@ -143,28 +109,6 @@ func getTime() {
 	}
 
 	fmt.Println(serverTime.Message)
-}
-
-func sayHi() {
-	// get a stream to the server
-	stream, err := server.SayHi(context.Background())
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	// send some messages to the server
-	stream.Send(&gRPC.Greeding{ClientName: *clientsName, Message: "Hi"})
-	stream.Send(&gRPC.Greeding{ClientName: *clientsName, Message: "How are you?"})
-	stream.Send(&gRPC.Greeding{ClientName: *clientsName, Message: "I'm fine, thanks."})
-
-	// close the stream
-	farewell, err := stream.CloseAndRecv()
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	log.Println("server says: ", farewell)
 }
 
 // Function which returns a true boolean if the connection to the server is ready, and false if it's not.
