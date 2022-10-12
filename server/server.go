@@ -54,7 +54,7 @@ func launchServer() {
 
 	// Create listener tcp on given port or default port 5400
 	// Insert your device's IP before the colon in the print statement
-	list, err := net.Listen("tcp", fmt.Sprintf(":%s", *port))
+	list, err := net.Listen("tcp", fmt.Sprintf("172.19.64.1:%s", *port))
 	if err != nil {
 		log.Printf("Server %s: Failed to listen on port %s: %v", *serverName, *port, err) //If it fails to listen on the port, run launchServer method again with the next value/port in ports array
 		return
@@ -91,6 +91,13 @@ func (s *Server) GetTime(ctx context.Context, ClientTime *gRPC.ClientTime) (*gRP
 	s.serverTime = time.Now()
 	fmt.Println("s.serverTime: ", s.serverTime.String())
 	return &gRPC.ServerTime{Message: s.serverTime.String()}, nil
+}
+
+func (s *Server) PublishMessage(ctx context.Context, publish *gRPC.Publish) (*gRPC.Publish, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	log.Printf(publish.Message)
+	return &gRPC.Publish{Message: publish.Message}, nil
 }
 
 // sets the logger to use a log.txt file instead of the console

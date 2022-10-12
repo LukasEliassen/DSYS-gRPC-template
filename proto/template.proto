@@ -14,6 +14,12 @@ service Template
 {
     // one message is sent and one is recieved
     rpc getTime (clientTime) returns (serverTime);
+
+    rpc publishMessage (publish) returns (publish);
+}
+
+message publish {
+    string message = 1;
 }
 
 message clientTime {

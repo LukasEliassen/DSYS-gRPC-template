@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion7
 type TemplateClient interface {
 	// one message is sent and one is recieved
 	GetTime(ctx context.Context, in *ClientTime, opts ...grpc.CallOption) (*ServerTime, error)
+	PublishMessage(ctx context.Context, in *Publish, opts ...grpc.CallOption) (*Publish, error)
 }
 
 type templateClient struct {
@@ -39,12 +40,22 @@ func (c *templateClient) GetTime(ctx context.Context, in *ClientTime, opts ...gr
 	return out, nil
 }
 
+func (c *templateClient) PublishMessage(ctx context.Context, in *Publish, opts ...grpc.CallOption) (*Publish, error) {
+	out := new(Publish)
+	err := c.cc.Invoke(ctx, "/proto.Template/publishMessage", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TemplateServer is the server API for Template service.
 // All implementations must embed UnimplementedTemplateServer
 // for forward compatibility
 type TemplateServer interface {
 	// one message is sent and one is recieved
 	GetTime(context.Context, *ClientTime) (*ServerTime, error)
+	PublishMessage(context.Context, *Publish) (*Publish, error)
 	mustEmbedUnimplementedTemplateServer()
 }
 
@@ -54,6 +65,9 @@ type UnimplementedTemplateServer struct {
 
 func (UnimplementedTemplateServer) GetTime(context.Context, *ClientTime) (*ServerTime, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTime not implemented")
+}
+func (UnimplementedTemplateServer) PublishMessage(context.Context, *Publish) (*Publish, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PublishMessage not implemented")
 }
 func (UnimplementedTemplateServer) mustEmbedUnimplementedTemplateServer() {}
 
@@ -86,6 +100,24 @@ func _Template_GetTime_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Template_PublishMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Publish)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TemplateServer).PublishMessage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.Template/publishMessage",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TemplateServer).PublishMessage(ctx, req.(*Publish))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Template_ServiceDesc is the grpc.ServiceDesc for Template service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -96,6 +128,10 @@ var Template_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "getTime",
 			Handler:    _Template_GetTime_Handler,
+		},
+		{
+			MethodName: "publishMessage",
+			Handler:    _Template_PublishMessage_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

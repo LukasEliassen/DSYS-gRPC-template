@@ -57,7 +57,7 @@ func ConnectToServer() {
 	//dial the server to get a connection to it
 	log.Printf("client %s: Attempts to dial on port %s\n", *clientsName, *serverPort)
 	// Insert your device's IP before the colon in the print statement
-	conn, err := grpc.DialContext(timeContext, fmt.Sprintf(":%s", *serverPort), opts...)
+	conn, err := grpc.DialContext(timeContext, fmt.Sprintf("172.19.64.1:%s", *serverPort), opts...)
 	if err != nil {
 		log.Printf("Fail to Dial : %v", err)
 		return
@@ -92,6 +92,8 @@ func parseInput() {
 
 		if input == "getTime" {
 			getTime()
+		} else {
+			publishMessage(input)
 		}
 		continue
 	}
@@ -109,6 +111,19 @@ func getTime() {
 	}
 
 	fmt.Println(serverTime.Message)
+}
+
+func publishMessage(input string) {
+	Message := &gRPC.Publish{
+		Message: input,
+	}
+	message, err := server.PublishMessage(context.Background(), Message)
+	if err != nil {
+		log.Printf("Client %s: no response from the server, attempting to reconnect", *clientsName)
+		log.Println(err)
+	}
+
+	fmt.Println(message.Message)
 }
 
 // Function which returns a true boolean if the connection to the server is ready, and false if it's not.
