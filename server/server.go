@@ -54,7 +54,7 @@ func launchServer() {
 
 	// Create listener tcp on given port or default port 5400
 	// Insert your device's IP before the colon in the print statement
-	list, err := net.Listen("tcp", fmt.Sprintf("172.19.64.1:%s", *port))
+	list, err := net.Listen("tcp", fmt.Sprintf("localhost:%s", *port))
 	if err != nil {
 		log.Printf("Server %s: Failed to listen on port %s: %v", *serverName, *port, err) //If it fails to listen on the port, run launchServer method again with the next value/port in ports array
 		return
