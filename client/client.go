@@ -5,11 +5,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/DarkLordOfDeadstiny/DSYS-gRPC-template/proto"
 	gRPC "github.com/DarkLordOfDeadstiny/DSYS-gRPC-template/proto"
 
 	"google.golang.org/grpc"
@@ -18,10 +20,11 @@ import (
 
 // Same principle as in client. Flags allows for user specific arguments/values
 var clientsName = flag.String("name", "default", "Senders name")
+var channelName = flag.String("channel", "default", "Channel name for chatting")
 var serverPort = flag.String("server", "5400", "Tcp server")
 
-var server gRPC.TemplateClient  //the server
-var ServerConn *grpc.ClientConn //the server connection
+var server gRPC.ChatServiceClient //the server
+var ServerConn *grpc.ClientConn   //the server connection
 
 func main() {
 	//parse flag/arguments
@@ -37,8 +40,15 @@ func main() {
 	ConnectToServer()
 	defer ServerConn.Close()
 
-	//start the biding
-	parseInput()
+	ctx := context.Background()
+	client := proto.NewChatServiceClient(ServerConn)
+
+	go joinChannel(ctx, client)
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		go sendMessage(ctx, client, scanner.Text())
+	}
 }
 
 // connect to server
@@ -65,12 +75,12 @@ func ConnectToServer() {
 
 	// makes a client from the server connection and saves the connection
 	// and prints rather or not the connection was is READY
-	server = gRPC.NewTemplateClient(conn)
+	server = gRPC.NewChatServiceClient(conn)
 	ServerConn = conn
 	log.Println("the connection is: ", conn.GetState().String())
 }
 
-func parseInput() {
+func parseInput(ctx context.Context, client gRPC.ChatServiceClient) {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Println("--------------------")
 
@@ -90,44 +100,64 @@ func parseInput() {
 			continue
 		}
 
-		if input == "getTime" {
-			getTime()
-		} else {
-			publishMessage(input)
-		}
+		sendMessage(ctx, client, input)
+
 		continue
 	}
 }
 
-func getTime() {
-	ClientTime := &gRPC.ClientTime{
-		Message: "", //cast from int to int32
-	}
-	fmt.Println(time.Now())
-	serverTime, err := server.GetTime(context.Background(), ClientTime)
+func joinChannel(ctx context.Context, client proto.ChatServiceClient) {
+
+	channel := proto.Channel{Name: *channelName, SendersName: *clientsName}
+	stream, err := client.JoinChannel(ctx, &channel)
 	if err != nil {
-		log.Printf("Client %s: no response from the server, attempting to reconnect", *clientsName)
-		log.Println(err)
+		log.Fatalf("client.JoinChannel(ctx, &channel) throws: %v", err)
 	}
 
-	fmt.Println(serverTime.Message)
+	fmt.Printf("Joined channel: %v \n", channel.Name)
+
+	waitc := make(chan struct{})
+
+	go func() {
+		for {
+			in, err := stream.Recv()
+			if err == io.EOF {
+				close(waitc)
+				return
+			}
+			if err != nil {
+				log.Fatalf("Failed to receive message from channel joining. \nErr: %v", err)
+			}
+
+			if *clientsName != in.Sender {
+				fmt.Printf("MESSAGE: (%v) -> %v \n", in.Sender, in.Message)
+			}
+		}
+	}()
+
+	<-waitc
 }
 
-func publishMessage(input string) {
-	Message := &gRPC.Publish{
-		Message: input,
-	}
-	message, err := server.PublishMessage(context.Background(), Message)
+func sendMessage(ctx context.Context, client proto.ChatServiceClient, message string) {
+	stream, err := client.SendMessage(ctx)
 	if err != nil {
-		log.Printf("Client %s: no response from the server, attempting to reconnect", *clientsName)
-		log.Println(err)
+		log.Printf("Cannot send message: error: %v", err)
 	}
+	msg := proto.Message{
+		Channel: &proto.Channel{
+			Name:        *channelName,
+			SendersName: *clientsName},
+		Message: message,
+		Sender:  *clientsName,
+	}
+	stream.Send(&msg)
 
-	fmt.Println(message.Message)
+	ack, err := stream.CloseAndRecv()
+	fmt.Printf("Message sent: %v \n", ack)
 }
 
 // Function which returns a true boolean if the connection to the server is ready, and false if it's not.
-func conReady(s gRPC.TemplateClient) bool {
+func conReady(s gRPC.ChatServiceClient) bool {
 	return ServerConn.GetState().String() == "READY"
 }
 

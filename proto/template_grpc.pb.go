@@ -14,126 +14,185 @@ import (
 // Requires gRPC-Go v1.32.0 or later.
 const _ = grpc.SupportPackageIsVersion7
 
-// TemplateClient is the client API for Template service.
+// ChatServiceClient is the client API for ChatService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type TemplateClient interface {
-	// one message is sent and one is recieved
-	GetTime(ctx context.Context, in *ClientTime, opts ...grpc.CallOption) (*ServerTime, error)
-	PublishMessage(ctx context.Context, in *Publish, opts ...grpc.CallOption) (*Publish, error)
+type ChatServiceClient interface {
+	JoinChannel(ctx context.Context, in *Channel, opts ...grpc.CallOption) (ChatService_JoinChannelClient, error)
+	SendMessage(ctx context.Context, opts ...grpc.CallOption) (ChatService_SendMessageClient, error)
 }
 
-type templateClient struct {
+type chatServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewTemplateClient(cc grpc.ClientConnInterface) TemplateClient {
-	return &templateClient{cc}
+func NewChatServiceClient(cc grpc.ClientConnInterface) ChatServiceClient {
+	return &chatServiceClient{cc}
 }
 
-func (c *templateClient) GetTime(ctx context.Context, in *ClientTime, opts ...grpc.CallOption) (*ServerTime, error) {
-	out := new(ServerTime)
-	err := c.cc.Invoke(ctx, "/proto.Template/getTime", in, out, opts...)
+func (c *chatServiceClient) JoinChannel(ctx context.Context, in *Channel, opts ...grpc.CallOption) (ChatService_JoinChannelClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ChatService_ServiceDesc.Streams[0], "/proto.ChatService/JoinChannel", opts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &chatServiceJoinChannelClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
 
-func (c *templateClient) PublishMessage(ctx context.Context, in *Publish, opts ...grpc.CallOption) (*Publish, error) {
-	out := new(Publish)
-	err := c.cc.Invoke(ctx, "/proto.Template/publishMessage", in, out, opts...)
+type ChatService_JoinChannelClient interface {
+	Recv() (*Message, error)
+	grpc.ClientStream
+}
+
+type chatServiceJoinChannelClient struct {
+	grpc.ClientStream
+}
+
+func (x *chatServiceJoinChannelClient) Recv() (*Message, error) {
+	m := new(Message)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *chatServiceClient) SendMessage(ctx context.Context, opts ...grpc.CallOption) (ChatService_SendMessageClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ChatService_ServiceDesc.Streams[1], "/proto.ChatService/SendMessage", opts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &chatServiceSendMessageClient{stream}
+	return x, nil
 }
 
-// TemplateServer is the server API for Template service.
-// All implementations must embed UnimplementedTemplateServer
+type ChatService_SendMessageClient interface {
+	Send(*Message) error
+	CloseAndRecv() (*MessageAck, error)
+	grpc.ClientStream
+}
+
+type chatServiceSendMessageClient struct {
+	grpc.ClientStream
+}
+
+func (x *chatServiceSendMessageClient) Send(m *Message) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *chatServiceSendMessageClient) CloseAndRecv() (*MessageAck, error) {
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	m := new(MessageAck)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// ChatServiceServer is the server API for ChatService service.
+// All implementations must embed UnimplementedChatServiceServer
 // for forward compatibility
-type TemplateServer interface {
-	// one message is sent and one is recieved
-	GetTime(context.Context, *ClientTime) (*ServerTime, error)
-	PublishMessage(context.Context, *Publish) (*Publish, error)
-	mustEmbedUnimplementedTemplateServer()
+type ChatServiceServer interface {
+	JoinChannel(*Channel, ChatService_JoinChannelServer) error
+	SendMessage(ChatService_SendMessageServer) error
+	mustEmbedUnimplementedChatServiceServer()
 }
 
-// UnimplementedTemplateServer must be embedded to have forward compatible implementations.
-type UnimplementedTemplateServer struct {
+// UnimplementedChatServiceServer must be embedded to have forward compatible implementations.
+type UnimplementedChatServiceServer struct {
 }
 
-func (UnimplementedTemplateServer) GetTime(context.Context, *ClientTime) (*ServerTime, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetTime not implemented")
+func (UnimplementedChatServiceServer) JoinChannel(*Channel, ChatService_JoinChannelServer) error {
+	return status.Errorf(codes.Unimplemented, "method JoinChannel not implemented")
 }
-func (UnimplementedTemplateServer) PublishMessage(context.Context, *Publish) (*Publish, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method PublishMessage not implemented")
+func (UnimplementedChatServiceServer) SendMessage(ChatService_SendMessageServer) error {
+	return status.Errorf(codes.Unimplemented, "method SendMessage not implemented")
 }
-func (UnimplementedTemplateServer) mustEmbedUnimplementedTemplateServer() {}
+func (UnimplementedChatServiceServer) mustEmbedUnimplementedChatServiceServer() {}
 
-// UnsafeTemplateServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to TemplateServer will
+// UnsafeChatServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ChatServiceServer will
 // result in compilation errors.
-type UnsafeTemplateServer interface {
-	mustEmbedUnimplementedTemplateServer()
+type UnsafeChatServiceServer interface {
+	mustEmbedUnimplementedChatServiceServer()
 }
 
-func RegisterTemplateServer(s grpc.ServiceRegistrar, srv TemplateServer) {
-	s.RegisterService(&Template_ServiceDesc, srv)
+func RegisterChatServiceServer(s grpc.ServiceRegistrar, srv ChatServiceServer) {
+	s.RegisterService(&ChatService_ServiceDesc, srv)
 }
 
-func _Template_GetTime_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ClientTime)
-	if err := dec(in); err != nil {
+func _ChatService_JoinChannel_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(Channel)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ChatServiceServer).JoinChannel(m, &chatServiceJoinChannelServer{stream})
+}
+
+type ChatService_JoinChannelServer interface {
+	Send(*Message) error
+	grpc.ServerStream
+}
+
+type chatServiceJoinChannelServer struct {
+	grpc.ServerStream
+}
+
+func (x *chatServiceJoinChannelServer) Send(m *Message) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _ChatService_SendMessage_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ChatServiceServer).SendMessage(&chatServiceSendMessageServer{stream})
+}
+
+type ChatService_SendMessageServer interface {
+	SendAndClose(*MessageAck) error
+	Recv() (*Message, error)
+	grpc.ServerStream
+}
+
+type chatServiceSendMessageServer struct {
+	grpc.ServerStream
+}
+
+func (x *chatServiceSendMessageServer) SendAndClose(m *MessageAck) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *chatServiceSendMessageServer) Recv() (*Message, error) {
+	m := new(Message)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
-	if interceptor == nil {
-		return srv.(TemplateServer).GetTime(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/proto.Template/getTime",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TemplateServer).GetTime(ctx, req.(*ClientTime))
-	}
-	return interceptor(ctx, in, info, handler)
+	return m, nil
 }
 
-func _Template_PublishMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Publish)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(TemplateServer).PublishMessage(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/proto.Template/publishMessage",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TemplateServer).PublishMessage(ctx, req.(*Publish))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-// Template_ServiceDesc is the grpc.ServiceDesc for Template service.
+// ChatService_ServiceDesc is the grpc.ServiceDesc for ChatService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var Template_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "proto.Template",
-	HandlerType: (*TemplateServer)(nil),
-	Methods: []grpc.MethodDesc{
+var ChatService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "proto.ChatService",
+	HandlerType: (*ChatServiceServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
 		{
-			MethodName: "getTime",
-			Handler:    _Template_GetTime_Handler,
+			StreamName:    "JoinChannel",
+			Handler:       _ChatService_JoinChannel_Handler,
+			ServerStreams: true,
 		},
 		{
-			MethodName: "publishMessage",
-			Handler:    _Template_PublishMessage_Handler,
+			StreamName:    "SendMessage",
+			Handler:       _ChatService_SendMessage_Handler,
+			ClientStreams: true,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
 	Metadata: "proto/template.proto",
 }
