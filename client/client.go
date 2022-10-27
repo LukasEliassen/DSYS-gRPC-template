@@ -20,11 +20,11 @@ import (
 
 // Same principle as in client. Flags allows for user specific arguments/values
 var clientsName = flag.String("name", "default", "Senders name")
-var channelName = flag.String("channel", "default", "Channel name for chatting")
 var serverPort = flag.String("server", "5400", "Tcp server")
 
 var server gRPC.ChatServiceClient //the server
 var ServerConn *grpc.ClientConn   //the server connection
+var LamportClock int32
 
 func main() {
 	//parse flag/arguments
@@ -49,6 +49,15 @@ func main() {
 	for scanner.Scan() {
 		go sendMessage(ctx, client, scanner.Text())
 	}
+}
+
+func DisconnectFromServer() {
+	ctx := context.Background()
+	client := proto.NewChatServiceClient(ServerConn)
+	sendMessage(ctx, client, "close")
+	log.Printf("Closing connection to server from %v", clientsName)
+	ServerConn.Close()
+	LamportClock = 0
 }
 
 // connect to server
@@ -107,14 +116,12 @@ func parseInput(ctx context.Context, client gRPC.ChatServiceClient) {
 }
 
 func joinChannel(ctx context.Context, client proto.ChatServiceClient) {
-
-	channel := proto.Channel{Name: *channelName, SendersName: *clientsName}
-	stream, err := client.JoinChannel(ctx, &channel)
+	ack := proto.Message{Sender: *clientsName}
+	stream, err := client.JoinChannel(ctx, &ack)
 	if err != nil {
 		log.Fatalf("client.JoinChannel(ctx, &channel) throws: %v", err)
 	}
-
-	fmt.Printf("Joined channel: %v \n", channel.Name)
+	fmt.Printf("Joined server: %v \n", clientsName)
 
 	waitc := make(chan struct{})
 
@@ -122,16 +129,18 @@ func joinChannel(ctx context.Context, client proto.ChatServiceClient) {
 		for {
 			in, err := stream.Recv()
 			if err == io.EOF {
+				fmt.Println("not working")
 				close(waitc)
 				return
 			}
 			if err != nil {
 				log.Fatalf("Failed to receive message from channel joining. \nErr: %v", err)
 			}
-
-			if *clientsName != in.Sender {
-				fmt.Printf("MESSAGE: (%v) -> %v \n", in.Sender, in.Message)
+			if in.Lamport > LamportClock {
+				LamportClock = in.Lamport
 			}
+			LamportClock++
+			fmt.Printf("LAMPORT: %v, MESSAGE: (%v) -> %v \n", LamportClock, in.Sender, in.Message)
 		}
 	}()
 
@@ -143,12 +152,11 @@ func sendMessage(ctx context.Context, client proto.ChatServiceClient, message st
 	if err != nil {
 		log.Printf("Cannot send message: error: %v", err)
 	}
+	LamportClock++
 	msg := proto.Message{
-		Channel: &proto.Channel{
-			Name:        *channelName,
-			SendersName: *clientsName},
 		Message: message,
 		Sender:  *clientsName,
+		Lamport: LamportClock,
 	}
 	stream.Send(&msg)
 

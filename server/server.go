@@ -22,11 +22,9 @@ type Server struct {
 	gRPC.UnimplementedChatServiceServer        // You need this line if you have a server
 	name                                string // Not required but useful if you want to name your server
 	port                                string // Not required but useful if your server needs to know what port it's listening to
-	channel                             map[string][]chan *proto.Message
-
-	incrementValue int64 // value that clients can increment.
-	serverTime     time.Time
-	mutex          sync.Mutex // used to lock the server to avoid race conditions.
+	channel                             map[string]chan *proto.Message
+	mutex                               sync.Mutex // used to lock the server to avoid race conditions.
+	lamportClock                        int32
 }
 
 // flags are used to get arguments from the terminal. Flags take a value, a default value and a description of the flag.
@@ -59,11 +57,11 @@ func main() {
 }
 
 func newServer() *Server {
-	s := &Server{
-		channel: make(map[string][]chan *proto.Message),
+	server := &Server{
+		channel: make(map[string]chan *proto.Message),
 	}
-	fmt.Println(s)
-	return s
+	fmt.Println(server)
+	return server
 }
 
 func launchServer() {
@@ -84,10 +82,9 @@ func launchServer() {
 
 	// makes a new server instance using the name and port from the flags.
 	server := &Server{
-		name:           *serverName,
-		port:           *port,
-		incrementValue: 0, // gives default value, but not sure if it is necessary
-		serverTime:     time.Now(),
+		name:         *serverName,
+		port:         *port,
+		lamportClock: 0,
 	}
 
 	gRPC.RegisterChatServiceServer(grpcServer, server) //Registers the server to the gRPC server
@@ -100,17 +97,18 @@ func launchServer() {
 	// code here is unreachable because grpcServer.Serve occupies the current thread.
 }
 
-func (s *Server) JoinChannel(ch *proto.Channel, msgStream proto.ChatService_JoinChannelServer) error {
+func (s *Server) JoinChannel(msg *proto.Message, msgStream proto.ChatService_JoinChannelServer) error {
 
 	msgChannel := make(chan *proto.Message)
-	s.channel[ch.Name] = append(s.channel[ch.Name], msgChannel)
-
+	s.channel[msg.Sender] = msgChannel
 	for {
 		select {
 		case <-msgStream.Context().Done():
 			return nil
 		case msg := <-msgChannel:
 			fmt.Printf("GO ROUTINE (got message): %v \n", msg)
+			s.lamportClock++
+			msg.Lamport = s.lamportClock
 			msgStream.Send(msg)
 		}
 	}
@@ -126,13 +124,22 @@ func (s *Server) SendMessage(msgStream proto.ChatService_SendMessageServer) erro
 	if err != nil {
 		return err
 	}
-
-	ack := proto.MessageAck{Status: "SENT"}
-	msgStream.SendAndClose(&ack)
-
+	if msg.Lamport > s.lamportClock {
+		s.lamportClock = msg.Lamport
+	}
+	s.lamportClock++
+	if msg.Message == "close" {
+		delete(s.channel, msg.Sender)
+		log.Printf("Closing connection to client %v", msg.Sender)
+		ack := proto.MessageAck{Status: "DISCONNECTED"}
+		msgStream.SendAndClose(&ack)
+		msg.Message = msg.Sender + " has left the chat"
+	} else {
+		ack := proto.MessageAck{Status: "SENT"}
+		msgStream.SendAndClose(&ack)
+	}
 	go func() {
-		streams := s.channel[msg.Channel.Name]
-		for _, msgChan := range streams {
+		for _, msgChan := range s.channel {
 			msgChan <- msg
 		}
 	}()
