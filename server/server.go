@@ -6,8 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
-	"sync"
+	"strconv"
 	"time"
 
 	// this has to be the same as the go.mod module,
@@ -23,7 +22,6 @@ type Server struct {
 	name                                string // Not required but useful if you want to name your server
 	port                                string // Not required but useful if your server needs to know what port it's listening to
 	channel                             map[string]chan *proto.Message
-	mutex                               sync.Mutex // used to lock the server to avoid race conditions.
 	lamportClock                        int32
 }
 
@@ -33,35 +31,17 @@ var serverName = flag.String("name", "default", "Senders name") // set with "-na
 var port = flag.String("port", "5400", "Server port")           // set with "-port <port>" in terminal
 
 func main() {
-
-	// setLog() //uncomment this line to log to a log.txt file instead of the console
-
 	// This parses the flags and sets the correct/given corresponding values.
 	flag.Parse()
-	fmt.Println(".:server is starting:.")
+	fmt.Println("Server is starting...")
 
 	// starts a goroutine executing the launchServer method.
-	lis, err := net.Listen("tcp", "localhost:5400")
-	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
-	}
-	var opts []grpc.ServerOption
-	grpcServer := grpc.NewServer(opts...)
-	proto.RegisterChatServiceServer(grpcServer, newServer())
-	grpcServer.Serve(lis)
+	go launchServer()
 
 	// This makes sure that the main method is "kept alive"/keeps running
 	for {
 		time.Sleep(time.Second * 5)
 	}
-}
-
-func newServer() *Server {
-	server := &Server{
-		channel: make(map[string]chan *proto.Message),
-	}
-	fmt.Println(server)
-	return server
 }
 
 func launchServer() {
@@ -85,6 +65,7 @@ func launchServer() {
 		name:         *serverName,
 		port:         *port,
 		lamportClock: 0,
+		channel:      make(map[string]chan *proto.Message),
 	}
 
 	gRPC.RegisterChatServiceServer(grpcServer, server) //Registers the server to the gRPC server
@@ -106,7 +87,6 @@ func (s *Server) JoinChannel(msg *proto.Message, msgStream proto.ChatService_Joi
 		case <-msgStream.Context().Done():
 			return nil
 		case msg := <-msgChannel:
-			fmt.Printf("GO ROUTINE (got message): %v \n", msg)
 			s.lamportClock++
 			msg.Lamport = s.lamportClock
 			msgStream.Send(msg)
@@ -127,38 +107,30 @@ func (s *Server) SendMessage(msgStream proto.ChatService_SendMessageServer) erro
 	if msg.Lamport > s.lamportClock {
 		s.lamportClock = msg.Lamport
 	}
+	log.Printf("Received message: %v \n", msg)
 	s.lamportClock++
 	if msg.Message == "close" {
 		delete(s.channel, msg.Sender)
 		log.Printf("Closing connection to client %v", msg.Sender)
 		ack := proto.MessageAck{Status: "DISCONNECTED"}
 		msgStream.SendAndClose(&ack)
-		msg.Message = msg.Sender + " has left the chat"
+		msg.Message = "Participant " + msg.Sender + " has left ChittyChat at Lamport time " + strconv.Itoa(int(s.lamportClock))
+	} else if msg.Message == "join" {
+		log.Printf("Participant %v has joined ChittyChat at Lamport time "+strconv.Itoa(int(s.lamportClock)), msg.Sender)
+		msg.Message = "Participant " + msg.Sender + " has joined ChittyChat at Lamport time " + strconv.Itoa(int(s.lamportClock))
+		ack := proto.MessageAck{Status: "CONNECTED"}
+		msgStream.SendAndClose(&ack)
 	} else {
 		ack := proto.MessageAck{Status: "SENT"}
 		msgStream.SendAndClose(&ack)
 	}
 	go func() {
-		for _, msgChan := range s.channel {
-			msgChan <- msg
+		for client, msgChan := range s.channel {
+			if client != msg.Sender {
+				msgChan <- msg
+			}
 		}
 	}()
 
 	return nil
-}
-
-// sets the logger to use a log.txt file instead of the console
-func setLog() {
-	// Clears the log.txt file when a new server is started
-	if err := os.Truncate("log.txt", 0); err != nil {
-		log.Printf("Failed to truncate: %v", err)
-	}
-
-	// This connects to the log file/changes the output of the log informaiton to the log.txt file.
-	f, err := os.OpenFile("log.txt", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	defer f.Close()
-	log.SetOutput(f)
 }

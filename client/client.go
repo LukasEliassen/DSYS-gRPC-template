@@ -21,7 +21,6 @@ import (
 // Same principle as in client. Flags allows for user specific arguments/values
 var clientsName = flag.String("name", "default", "Senders name")
 var serverPort = flag.String("server", "5400", "Tcp server")
-
 var server gRPC.ChatServiceClient //the server
 var ServerConn *grpc.ClientConn   //the server connection
 var LamportClock int32
@@ -45,18 +44,14 @@ func main() {
 
 	go joinChannel(ctx, client)
 
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		go sendMessage(ctx, client, scanner.Text())
-	}
+	parseInput(ctx, server)
 }
 
 func DisconnectFromServer() {
 	ctx := context.Background()
 	client := proto.NewChatServiceClient(ServerConn)
 	sendMessage(ctx, client, "close")
-	log.Printf("Closing connection to server from %v", clientsName)
-	ServerConn.Close()
+	log.Printf("Closing connection to server from %v", *clientsName)
 	LamportClock = 0
 }
 
@@ -90,12 +85,12 @@ func ConnectToServer() {
 }
 
 func parseInput(ctx context.Context, client gRPC.ChatServiceClient) {
-	reader := bufio.NewReader(os.Stdin)
+
+	reader := bufio.NewReaderSize(os.Stdin, 128)
 	fmt.Println("--------------------")
 
 	//Infinite loop to listen for clients input.
 	for {
-		fmt.Print("-> ")
 
 		//Read input into var input and any errors into err
 		input, err := reader.ReadString('\n')
@@ -103,12 +98,18 @@ func parseInput(ctx context.Context, client gRPC.ChatServiceClient) {
 			log.Fatal(err)
 		}
 		input = strings.TrimSpace(input) //Trim input
-
+		if len(input) > 128 {
+			fmt.Println("Message must be shorter than 128 characters. Please try again...")
+			continue
+		}
+		if input == "close" {
+			DisconnectFromServer()
+			break
+		}
 		if !conReady(server) {
 			log.Printf("Client %s: something was wrong with the connection to the server :(", *clientsName)
 			continue
 		}
-
 		sendMessage(ctx, client, input)
 
 		continue
@@ -121,8 +122,8 @@ func joinChannel(ctx context.Context, client proto.ChatServiceClient) {
 	if err != nil {
 		log.Fatalf("client.JoinChannel(ctx, &channel) throws: %v", err)
 	}
-	fmt.Printf("Joined server: %v \n", clientsName)
-
+	fmt.Printf("Joined server: %v \n", *clientsName)
+	sendMessage(ctx, client, "join")
 	waitc := make(chan struct{})
 
 	go func() {
@@ -140,7 +141,7 @@ func joinChannel(ctx context.Context, client proto.ChatServiceClient) {
 				LamportClock = in.Lamport
 			}
 			LamportClock++
-			fmt.Printf("LAMPORT: %v, MESSAGE: (%v) -> %v \n", LamportClock, in.Sender, in.Message)
+			fmt.Printf("Lamport: %v, Message from %v: %v \n", LamportClock, in.Sender, in.Message)
 		}
 	}()
 
