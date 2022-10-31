@@ -5,11 +5,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/DarkLordOfDeadstiny/DSYS-gRPC-template/proto"
 	gRPC "github.com/DarkLordOfDeadstiny/DSYS-gRPC-template/proto"
 
 	"google.golang.org/grpc"
@@ -19,9 +21,9 @@ import (
 // Same principle as in client. Flags allows for user specific arguments/values
 var clientsName = flag.String("name", "default", "Senders name")
 var serverPort = flag.String("server", "5400", "Tcp server")
-
-var server gRPC.TemplateClient  //the server
-var ServerConn *grpc.ClientConn //the server connection
+var server gRPC.ChittyChatClient //the server
+var ServerConn *grpc.ClientConn  //the server connection
+var LamportClock int32
 
 func main() {
 	//parse flag/arguments
@@ -37,8 +39,20 @@ func main() {
 	ConnectToServer()
 	defer ServerConn.Close()
 
-	//start the biding
-	parseInput()
+	ctx := context.Background()
+	client := proto.NewChittyChatClient(ServerConn)
+
+	go joinChat(ctx, client)
+
+	parseInput(ctx, server)
+}
+
+func DisconnectFromServer() {
+	ctx := context.Background()
+	server := proto.NewChittyChatClient(ServerConn)
+	sendMessage(ctx, server, "close")
+	log.Printf("Closing connection to server from %v", *clientsName)
+	LamportClock = 0
 }
 
 // connect to server
@@ -65,69 +79,93 @@ func ConnectToServer() {
 
 	// makes a client from the server connection and saves the connection
 	// and prints rather or not the connection was is READY
-	server = gRPC.NewTemplateClient(conn)
+	server = gRPC.NewChittyChatClient(conn)
 	ServerConn = conn
 	log.Println("the connection is: ", conn.GetState().String())
 }
 
-func parseInput() {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Println("--------------------")
+func parseInput(ctx context.Context, server gRPC.ChittyChatClient) {
+
+	reader := bufio.NewReaderSize(os.Stdin, 128)
 
 	//Infinite loop to listen for clients input.
 	for {
-		fmt.Print("-> ")
-
 		//Read input into var input and any errors into err
 		input, err := reader.ReadString('\n')
 		if err != nil {
 			log.Fatal(err)
 		}
 		input = strings.TrimSpace(input) //Trim input
-
+		if len(input) > 128 {
+			fmt.Println("Message must be shorter than 128 characters. Please try again...")
+			continue
+		}
+		if input == "close" {
+			DisconnectFromServer()
+			break
+		}
 		if !conReady(server) {
 			log.Printf("Client %s: something was wrong with the connection to the server :(", *clientsName)
 			continue
 		}
+		sendMessage(ctx, server, input)
 
-		if input == "getTime" {
-			getTime()
-		} else {
-			publishMessage(input)
-		}
 		continue
 	}
 }
 
-func getTime() {
-	ClientTime := &gRPC.ClientTime{
-		Message: "", //cast from int to int32
-	}
-	fmt.Println(time.Now())
-	serverTime, err := server.GetTime(context.Background(), ClientTime)
+func joinChat(ctx context.Context, server proto.ChittyChatClient) {
+	ack := proto.Message{Sender: *clientsName}
+	stream, err := server.JoinChat(ctx, &ack)
 	if err != nil {
-		log.Printf("Client %s: no response from the server, attempting to reconnect", *clientsName)
-		log.Println(err)
+		log.Fatalf("client.JoinChat(ctx, &channel) throws: %v", err)
 	}
+	fmt.Printf("Joined server: %v \n", *clientsName)
+	sendMessage(ctx, server, "join")
+	waitc := make(chan struct{})
 
-	fmt.Println(serverTime.Message)
+	go func() {
+		for {
+			in, err := stream.Recv()
+			if err == io.EOF {
+				fmt.Println("not working")
+				close(waitc)
+				return
+			}
+			if err != nil {
+				log.Fatalf("Failed to receive message from channel joining. \nErr: %v", err)
+			}
+			if in.Lamport > LamportClock {
+				LamportClock = in.Lamport
+			}
+			LamportClock++
+			fmt.Printf("Lamport: %v, Message from %v: %v \n", LamportClock, in.Sender, in.Message)
+			fmt.Println("--------------------")
+		}
+	}()
+
+	<-waitc
 }
 
-func publishMessage(input string) {
-	Message := &gRPC.Publish{
-		Message: input,
-	}
-	message, err := server.PublishMessage(context.Background(), Message)
+func sendMessage(ctx context.Context, server proto.ChittyChatClient, message string) {
+	stream, err := server.SendMessage(ctx)
 	if err != nil {
-		log.Printf("Client %s: no response from the server, attempting to reconnect", *clientsName)
-		log.Println(err)
+		log.Printf("Cannot send message: error: %v", err)
 	}
+	LamportClock++
+	msg := proto.Message{
+		Message: message,
+		Sender:  *clientsName,
+		Lamport: LamportClock,
+	}
+	stream.Send(&msg)
 
-	fmt.Println(message.Message)
+	ack, err := stream.CloseAndRecv()
+	fmt.Printf("Message status: %v \n", ack.Status)
 }
 
 // Function which returns a true boolean if the connection to the server is ready, and false if it's not.
-func conReady(s gRPC.TemplateClient) bool {
+func conReady(s gRPC.ChittyChatClient) bool {
 	return ServerConn.GetState().String() == "READY"
 }
 

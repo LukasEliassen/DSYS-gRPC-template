@@ -1,30 +1,28 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
-	"os"
-	"sync"
+	"strconv"
 	"time"
 
 	// this has to be the same as the go.mod module,
 	// followed by the path to the folder the proto file is in.
+	"github.com/DarkLordOfDeadstiny/DSYS-gRPC-template/proto"
 	gRPC "github.com/DarkLordOfDeadstiny/DSYS-gRPC-template/proto"
 
 	"google.golang.org/grpc"
 )
 
 type Server struct {
-	gRPC.UnimplementedTemplateServer        // You need this line if you have a server
-	name                             string // Not required but useful if you want to name your server
-	port                             string // Not required but useful if your server needs to know what port it's listening to
-
-	incrementValue int64 // value that clients can increment.
-	serverTime     time.Time
-	mutex          sync.Mutex // used to lock the server to avoid race conditions.
+	gRPC.UnimplementedChittyChatServer        // You need this line if you have a server
+	name                               string // Not required but useful if you want to name your server
+	port                               string // Not required but useful if your server needs to know what port it's listening to
+	channel                            map[string]chan *proto.Message
+	lamportClock                       int32
 }
 
 // flags are used to get arguments from the terminal. Flags take a value, a default value and a description of the flag.
@@ -33,12 +31,9 @@ var serverName = flag.String("name", "default", "Senders name") // set with "-na
 var port = flag.String("port", "5400", "Server port")           // set with "-port <port>" in terminal
 
 func main() {
-
-	// setLog() //uncomment this line to log to a log.txt file instead of the console
-
 	// This parses the flags and sets the correct/given corresponding values.
 	flag.Parse()
-	fmt.Println(".:server is starting:.")
+	fmt.Println("Server is starting...")
 
 	// starts a goroutine executing the launchServer method.
 	go launchServer()
@@ -54,7 +49,7 @@ func launchServer() {
 
 	// Create listener tcp on given port or default port 5400
 	// Insert your device's IP before the colon in the print statement
-	list, err := net.Listen("tcp", fmt.Sprintf("localhost:%s", *port))
+	list, err := net.Listen("tcp", "localhost:5400")
 	if err != nil {
 		log.Printf("Server %s: Failed to listen on port %s: %v", *serverName, *port, err) //If it fails to listen on the port, run launchServer method again with the next value/port in ports array
 		return
@@ -67,51 +62,72 @@ func launchServer() {
 
 	// makes a new server instance using the name and port from the flags.
 	server := &Server{
-		name:           *serverName,
-		port:           *port,
-		incrementValue: 0, // gives default value, but not sure if it is necessary
-		serverTime:     time.Now(),
+		name:         *serverName,
+		port:         *port,
+		lamportClock: 0,
+		channel:      make(map[string]chan *proto.Message),
 	}
 
-	gRPC.RegisterTemplateServer(grpcServer, server) //Registers the server to the gRPC server.
+	gRPC.RegisterChittyChatServer(grpcServer, server) //Registers the server to the gRPC server
 
 	log.Printf("Server %s: Listening on port %s\n", *serverName, *port)
 
 	if err := grpcServer.Serve(list); err != nil {
 		log.Fatalf("failed to serve %v", err)
 	}
-	// code here is unreachable because grpcServer.Serve occupies the current thread.
 }
 
-func (s *Server) GetTime(ctx context.Context, ClientTime *gRPC.ClientTime) (*gRPC.ServerTime, error) {
-	// locks the server ensuring no one else can increment the value at the same time.
-	// and unlocks the server when the method is done.
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.serverTime = time.Now()
-	fmt.Println("s.serverTime: ", s.serverTime.String())
-	return &gRPC.ServerTime{Message: s.serverTime.String()}, nil
+func (s *Server) JoinChat(msg *proto.Message, msgStream proto.ChittyChat_JoinChatServer) error {
+
+	msgChannel := make(chan *proto.Message)
+	s.channel[msg.Sender] = msgChannel
+	for {
+		select {
+		case <-msgStream.Context().Done():
+			return nil
+		case msg := <-msgChannel:
+			s.lamportClock++
+			msg.Lamport = s.lamportClock
+			msgStream.Send(msg)
+		}
+	}
 }
 
-func (s *Server) PublishMessage(ctx context.Context, publish *gRPC.Publish) (*gRPC.Publish, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	log.Printf(publish.Message)
-	return &gRPC.Publish{Message: publish.Message}, nil
-}
+func (s *Server) SendMessage(msgStream proto.ChittyChat_SendMessageServer) error {
+	msg, err := msgStream.Recv()
 
-// sets the logger to use a log.txt file instead of the console
-func setLog() {
-	// Clears the log.txt file when a new server is started
-	if err := os.Truncate("log.txt", 0); err != nil {
-		log.Printf("Failed to truncate: %v", err)
+	if err == io.EOF {
+		return nil
 	}
 
-	// This connects to the log file/changes the output of the log informaiton to the log.txt file.
-	f, err := os.OpenFile("log.txt", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
-		log.Fatalf("error opening file: %v", err)
+		return err
 	}
-	defer f.Close()
-	log.SetOutput(f)
+	if msg.Lamport > s.lamportClock {
+		s.lamportClock = msg.Lamport
+	}
+	log.Printf("Received message: %v \n", msg)
+	s.lamportClock++
+	if msg.Message == "close" {
+		delete(s.channel, msg.Sender)
+		log.Printf("Closing connection to client %v", msg.Sender)
+		ack := proto.MessageAck{Status: "DISCONNECTED"}
+		msgStream.SendAndClose(&ack)
+		msg.Message = "Participant " + msg.Sender + " has left ChittyChat at Lamport time " + strconv.Itoa(int(s.lamportClock))
+	} else if msg.Message == "join" {
+		log.Printf("Participant %v has joined ChittyChat at Lamport time "+strconv.Itoa(int(s.lamportClock)), msg.Sender)
+		msg.Message = "Participant " + msg.Sender + " has joined ChittyChat at Lamport time " + strconv.Itoa(int(s.lamportClock))
+		ack := proto.MessageAck{Status: "CONNECTED"}
+		msgStream.SendAndClose(&ack)
+	} else {
+		ack := proto.MessageAck{Status: "SENT"}
+		msgStream.SendAndClose(&ack)
+	}
+	go func() {
+		for _, msgChan := range s.channel {
+			msgChan <- msg
+		}
+	}()
+
+	return nil
 }
