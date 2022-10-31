@@ -18,11 +18,11 @@ import (
 )
 
 type Server struct {
-	gRPC.UnimplementedChatServiceServer        // You need this line if you have a server
-	name                                string // Not required but useful if you want to name your server
-	port                                string // Not required but useful if your server needs to know what port it's listening to
-	channel                             map[string]chan *proto.Message
-	lamportClock                        int32
+	gRPC.UnimplementedChittyChatServer        // You need this line if you have a server
+	name                               string // Not required but useful if you want to name your server
+	port                               string // Not required but useful if your server needs to know what port it's listening to
+	channel                            map[string]chan *proto.Message
+	lamportClock                       int32
 }
 
 // flags are used to get arguments from the terminal. Flags take a value, a default value and a description of the flag.
@@ -68,17 +68,16 @@ func launchServer() {
 		channel:      make(map[string]chan *proto.Message),
 	}
 
-	gRPC.RegisterChatServiceServer(grpcServer, server) //Registers the server to the gRPC server
+	gRPC.RegisterChittyChatServer(grpcServer, server) //Registers the server to the gRPC server
 
 	log.Printf("Server %s: Listening on port %s\n", *serverName, *port)
 
 	if err := grpcServer.Serve(list); err != nil {
 		log.Fatalf("failed to serve %v", err)
 	}
-	// code here is unreachable because grpcServer.Serve occupies the current thread.
 }
 
-func (s *Server) JoinChannel(msg *proto.Message, msgStream proto.ChatService_JoinChannelServer) error {
+func (s *Server) JoinChat(msg *proto.Message, msgStream proto.ChittyChat_JoinChatServer) error {
 
 	msgChannel := make(chan *proto.Message)
 	s.channel[msg.Sender] = msgChannel
@@ -94,7 +93,7 @@ func (s *Server) JoinChannel(msg *proto.Message, msgStream proto.ChatService_Joi
 	}
 }
 
-func (s *Server) SendMessage(msgStream proto.ChatService_SendMessageServer) error {
+func (s *Server) SendMessage(msgStream proto.ChittyChat_SendMessageServer) error {
 	msg, err := msgStream.Recv()
 
 	if err == io.EOF {
@@ -125,10 +124,8 @@ func (s *Server) SendMessage(msgStream proto.ChatService_SendMessageServer) erro
 		msgStream.SendAndClose(&ack)
 	}
 	go func() {
-		for client, msgChan := range s.channel {
-			if client != msg.Sender {
-				msgChan <- msg
-			}
+		for _, msgChan := range s.channel {
+			msgChan <- msg
 		}
 	}()
 

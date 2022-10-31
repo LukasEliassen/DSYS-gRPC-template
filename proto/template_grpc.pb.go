@@ -18,28 +18,28 @@ import (
 // Requires gRPC-Go v1.32.0 or later.
 const _ = grpc.SupportPackageIsVersion7
 
-// ChatServiceClient is the client API for ChatService service.
+// ChittyChatClient is the client API for ChittyChat service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type ChatServiceClient interface {
-	JoinChannel(ctx context.Context, in *Message, opts ...grpc.CallOption) (ChatService_JoinChannelClient, error)
-	SendMessage(ctx context.Context, opts ...grpc.CallOption) (ChatService_SendMessageClient, error)
+type ChittyChatClient interface {
+	JoinChat(ctx context.Context, in *Message, opts ...grpc.CallOption) (ChittyChat_JoinChatClient, error)
+	SendMessage(ctx context.Context, opts ...grpc.CallOption) (ChittyChat_SendMessageClient, error)
 }
 
-type chatServiceClient struct {
+type chittyChatClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewChatServiceClient(cc grpc.ClientConnInterface) ChatServiceClient {
-	return &chatServiceClient{cc}
+func NewChittyChatClient(cc grpc.ClientConnInterface) ChittyChatClient {
+	return &chittyChatClient{cc}
 }
 
-func (c *chatServiceClient) JoinChannel(ctx context.Context, in *Message, opts ...grpc.CallOption) (ChatService_JoinChannelClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ChatService_ServiceDesc.Streams[0], "/proto.ChatService/JoinChannel", opts...)
+func (c *chittyChatClient) JoinChat(ctx context.Context, in *Message, opts ...grpc.CallOption) (ChittyChat_JoinChatClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ChittyChat_ServiceDesc.Streams[0], "/proto.ChittyChat/JoinChat", opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &chatServiceJoinChannelClient{stream}
+	x := &chittyChatJoinChatClient{stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -49,16 +49,16 @@ func (c *chatServiceClient) JoinChannel(ctx context.Context, in *Message, opts .
 	return x, nil
 }
 
-type ChatService_JoinChannelClient interface {
+type ChittyChat_JoinChatClient interface {
 	Recv() (*Message, error)
 	grpc.ClientStream
 }
 
-type chatServiceJoinChannelClient struct {
+type chittyChatJoinChatClient struct {
 	grpc.ClientStream
 }
 
-func (x *chatServiceJoinChannelClient) Recv() (*Message, error) {
+func (x *chittyChatJoinChatClient) Recv() (*Message, error) {
 	m := new(Message)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -66,30 +66,30 @@ func (x *chatServiceJoinChannelClient) Recv() (*Message, error) {
 	return m, nil
 }
 
-func (c *chatServiceClient) SendMessage(ctx context.Context, opts ...grpc.CallOption) (ChatService_SendMessageClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ChatService_ServiceDesc.Streams[1], "/proto.ChatService/SendMessage", opts...)
+func (c *chittyChatClient) SendMessage(ctx context.Context, opts ...grpc.CallOption) (ChittyChat_SendMessageClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ChittyChat_ServiceDesc.Streams[1], "/proto.ChittyChat/SendMessage", opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &chatServiceSendMessageClient{stream}
+	x := &chittyChatSendMessageClient{stream}
 	return x, nil
 }
 
-type ChatService_SendMessageClient interface {
+type ChittyChat_SendMessageClient interface {
 	Send(*Message) error
 	CloseAndRecv() (*MessageAck, error)
 	grpc.ClientStream
 }
 
-type chatServiceSendMessageClient struct {
+type chittyChatSendMessageClient struct {
 	grpc.ClientStream
 }
 
-func (x *chatServiceSendMessageClient) Send(m *Message) error {
+func (x *chittyChatSendMessageClient) Send(m *Message) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *chatServiceSendMessageClient) CloseAndRecv() (*MessageAck, error) {
+func (x *chittyChatSendMessageClient) CloseAndRecv() (*MessageAck, error) {
 	if err := x.ClientStream.CloseSend(); err != nil {
 		return nil, err
 	}
@@ -100,78 +100,78 @@ func (x *chatServiceSendMessageClient) CloseAndRecv() (*MessageAck, error) {
 	return m, nil
 }
 
-// ChatServiceServer is the server API for ChatService service.
-// All implementations must embed UnimplementedChatServiceServer
+// ChittyChatServer is the server API for ChittyChat service.
+// All implementations must embed UnimplementedChittyChatServer
 // for forward compatibility
-type ChatServiceServer interface {
-	JoinChannel(*Message, ChatService_JoinChannelServer) error
-	SendMessage(ChatService_SendMessageServer) error
-	mustEmbedUnimplementedChatServiceServer()
+type ChittyChatServer interface {
+	JoinChat(*Message, ChittyChat_JoinChatServer) error
+	SendMessage(ChittyChat_SendMessageServer) error
+	mustEmbedUnimplementedChittyChatServer()
 }
 
-// UnimplementedChatServiceServer must be embedded to have forward compatible implementations.
-type UnimplementedChatServiceServer struct {
+// UnimplementedChittyChatServer must be embedded to have forward compatible implementations.
+type UnimplementedChittyChatServer struct {
 }
 
-func (UnimplementedChatServiceServer) JoinChannel(*Message, ChatService_JoinChannelServer) error {
-	return status.Errorf(codes.Unimplemented, "method JoinChannel not implemented")
+func (UnimplementedChittyChatServer) JoinChat(*Message, ChittyChat_JoinChatServer) error {
+	return status.Errorf(codes.Unimplemented, "method JoinChat not implemented")
 }
-func (UnimplementedChatServiceServer) SendMessage(ChatService_SendMessageServer) error {
+func (UnimplementedChittyChatServer) SendMessage(ChittyChat_SendMessageServer) error {
 	return status.Errorf(codes.Unimplemented, "method SendMessage not implemented")
 }
-func (UnimplementedChatServiceServer) mustEmbedUnimplementedChatServiceServer() {}
+func (UnimplementedChittyChatServer) mustEmbedUnimplementedChittyChatServer() {}
 
-// UnsafeChatServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to ChatServiceServer will
+// UnsafeChittyChatServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ChittyChatServer will
 // result in compilation errors.
-type UnsafeChatServiceServer interface {
-	mustEmbedUnimplementedChatServiceServer()
+type UnsafeChittyChatServer interface {
+	mustEmbedUnimplementedChittyChatServer()
 }
 
-func RegisterChatServiceServer(s grpc.ServiceRegistrar, srv ChatServiceServer) {
-	s.RegisterService(&ChatService_ServiceDesc, srv)
+func RegisterChittyChatServer(s grpc.ServiceRegistrar, srv ChittyChatServer) {
+	s.RegisterService(&ChittyChat_ServiceDesc, srv)
 }
 
-func _ChatService_JoinChannel_Handler(srv interface{}, stream grpc.ServerStream) error {
+func _ChittyChat_JoinChat_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(Message)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(ChatServiceServer).JoinChannel(m, &chatServiceJoinChannelServer{stream})
+	return srv.(ChittyChatServer).JoinChat(m, &chittyChatJoinChatServer{stream})
 }
 
-type ChatService_JoinChannelServer interface {
+type ChittyChat_JoinChatServer interface {
 	Send(*Message) error
 	grpc.ServerStream
 }
 
-type chatServiceJoinChannelServer struct {
+type chittyChatJoinChatServer struct {
 	grpc.ServerStream
 }
 
-func (x *chatServiceJoinChannelServer) Send(m *Message) error {
+func (x *chittyChatJoinChatServer) Send(m *Message) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func _ChatService_SendMessage_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(ChatServiceServer).SendMessage(&chatServiceSendMessageServer{stream})
+func _ChittyChat_SendMessage_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ChittyChatServer).SendMessage(&chittyChatSendMessageServer{stream})
 }
 
-type ChatService_SendMessageServer interface {
+type ChittyChat_SendMessageServer interface {
 	SendAndClose(*MessageAck) error
 	Recv() (*Message, error)
 	grpc.ServerStream
 }
 
-type chatServiceSendMessageServer struct {
+type chittyChatSendMessageServer struct {
 	grpc.ServerStream
 }
 
-func (x *chatServiceSendMessageServer) SendAndClose(m *MessageAck) error {
+func (x *chittyChatSendMessageServer) SendAndClose(m *MessageAck) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *chatServiceSendMessageServer) Recv() (*Message, error) {
+func (x *chittyChatSendMessageServer) Recv() (*Message, error) {
 	m := new(Message)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -179,22 +179,22 @@ func (x *chatServiceSendMessageServer) Recv() (*Message, error) {
 	return m, nil
 }
 
-// ChatService_ServiceDesc is the grpc.ServiceDesc for ChatService service.
+// ChittyChat_ServiceDesc is the grpc.ServiceDesc for ChittyChat service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var ChatService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "proto.ChatService",
-	HandlerType: (*ChatServiceServer)(nil),
+var ChittyChat_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "proto.ChittyChat",
+	HandlerType: (*ChittyChatServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "JoinChannel",
-			Handler:       _ChatService_JoinChannel_Handler,
+			StreamName:    "JoinChat",
+			Handler:       _ChittyChat_JoinChat_Handler,
 			ServerStreams: true,
 		},
 		{
 			StreamName:    "SendMessage",
-			Handler:       _ChatService_SendMessage_Handler,
+			Handler:       _ChittyChat_SendMessage_Handler,
 			ClientStreams: true,
 		},
 	},
